@@ -82,6 +82,10 @@ func NewAdapterCtx(ctx context.Context, db sqlx.SqlConn, table ...string) *Adapt
 	}
 }
 
+func (a *Adapter) WithCtx(ctx context.Context) {
+	a.ctx = ctx
+}
+
 // LoadPolicy loads all policy rules from the storage.
 func (a *Adapter) LoadPolicy(model model.Model) error {
 	var lines []CasbinPolicy
