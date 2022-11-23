@@ -109,13 +109,13 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 	for ptype, ast := range model["p"] {
 		for _, rule := range ast.Policy {
 			line := savePolicyLine(ptype, rule)
-			policys = append(policys, line)
+			policys = append(policys, *line)
 		}
 	}
 	for ptype, ast := range model["g"] {
 		for _, rule := range ast.Policy {
 			line := savePolicyLine(ptype, rule)
-			policys = append(policys, line)
+			policys = append(policys, *line)
 		}
 	}
 	err := a.db.TransactCtx(a.ctx, func(ctx context.Context, session sqlx.Session) error {
@@ -124,7 +124,7 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 			return err
 		}
 		if len(policys) > 0 {
-			err = a.batchInsertPolicy(ctx, policys, session)
+			err = a.batchInsertPolicy(ctx, &policys, session)
 			if err != nil {
 				return err
 			}
@@ -191,36 +191,13 @@ func (a *Adapter) GetFilteredNamedPolicy(sec string, ptype string, fieldIndex in
 	return rules, nil
 }
 
-func (a *Adapter) getFilteredNamedPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) ([]CasbinPolicy, error) {
-	if fieldIndex < 0 && fieldIndex > 5 {
-		return nil, errors.New("GetFilteredNamedPolicy fieldIndex must be a number from 0 to 5")
-	}
-	valLen := len(fieldValues)
-	if valLen == 0 {
-		return nil, errors.New("GetFilteredNamedPolicy fieldValues len is 0")
-	}
-	line := CasbinPolicy{}
-	line.Ptype = ptype
-	if fieldIndex <= 0 && 0 < fieldIndex+len(fieldValues) {
-		line.V0 = fieldValues[0-fieldIndex]
-	}
-	if fieldIndex <= 1 && 1 < fieldIndex+len(fieldValues) {
-		line.V1 = fieldValues[1-fieldIndex]
-	}
-	if fieldIndex <= 2 && 2 < fieldIndex+len(fieldValues) {
-		line.V2 = fieldValues[2-fieldIndex]
-	}
-	if fieldIndex <= 3 && 3 < fieldIndex+len(fieldValues) {
-		line.V3 = fieldValues[3-fieldIndex]
-	}
-	if fieldIndex <= 4 && 4 < fieldIndex+len(fieldValues) {
-		line.V4 = fieldValues[4-fieldIndex]
-	}
-	if fieldIndex <= 5 && 5 < fieldIndex+len(fieldValues) {
-		line.V5 = fieldValues[5-fieldIndex]
+func (a *Adapter) getFilteredNamedPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (*[]CasbinPolicy, error) {
+	line, err := getFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
+	if err != nil {
+		return nil, err
 	}
 	cond, bind := a.genCondBind(line)
-	lines, err := a.FindByCond(a.ctx, cond, bind, a.db)
+	lines, err := a.findByCond(a.ctx, cond, bind, a.db)
 	if err != nil {
 		return nil, err
 	}
@@ -233,13 +210,14 @@ func (a *Adapter) UpdateFilteredPolicies(sec string, ptype string, newRules [][]
 	if newLen == 0 {
 		return nil, errors.New("UpdateFilteredPolicies newRules len is 0")
 	}
-	lines, err := a.getFilteredNamedPolicy(sec, ptype, fieldIndex, fieldValues...)
+	line, err := getFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
 	if err != nil {
 		return nil, err
 	}
+	cond, bind := a.genCondBind(line)
 	newLines := stringSliceToPolicySlice(ptype, newRules)
 	err = a.db.TransactCtx(a.ctx, func(ctx context.Context, session sqlx.Session) error {
-		err = a.removePolicyByPolicySlice(ctx, lines, session)
+		err = a.deleteByCond(ctx, cond, bind, session)
 		if err != nil {
 			return err
 		}
@@ -252,6 +230,7 @@ func (a *Adapter) UpdateFilteredPolicies(sec string, ptype string, newRules [][]
 	if err != nil {
 		return nil, err
 	}
+	lines, err := a.findByCond(a.ctx, cond, bind, a.db)
 	oldLines := policySliceToStringSlice(lines)
 	return oldLines, nil
 }
@@ -259,12 +238,13 @@ func (a *Adapter) UpdateFilteredPolicies(sec string, ptype string, newRules [][]
 // RemoveFilteredPolicy removes policy rules that match the filter from the storage.
 // This is part of the Auto-Save feature.
 func (a *Adapter) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) error {
-	lines, err := a.getFilteredNamedPolicy(sec, ptype, fieldIndex, fieldValues...)
+	line, err := getFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
 	if err != nil {
 		return err
 	}
+	cond, bind := a.genCondBind(line)
 	err = a.db.TransactCtx(a.ctx, func(ctx context.Context, session sqlx.Session) error {
-		err = a.removePolicyByPolicySlice(ctx, lines, session)
+		err = a.deleteByCond(ctx, cond, bind, session)
 		return err
 	})
 	return err
@@ -279,9 +259,9 @@ func (a *Adapter) AddPolicies(sec string, ptype string, rules [][]string) error 
 	policys := make([]CasbinPolicy, 0, lens)
 	for _, rule := range rules {
 		line := savePolicyLine(ptype, rule)
-		policys = append(policys, line)
+		policys = append(policys, *line)
 	}
-	err := a.batchInsertPolicy(a.ctx, policys, a.db)
+	err := a.batchInsertPolicy(a.ctx, &policys, a.db)
 	return err
 }
 
@@ -294,18 +274,18 @@ func (a *Adapter) RemovePolicies(sec string, ptype string, rules [][]string) err
 	policys := make([]CasbinPolicy, 0, lens)
 	for _, rule := range rules {
 		line := savePolicyLine(ptype, rule)
-		policys = append(policys, line)
+		policys = append(policys, *line)
 	}
 	err := a.db.TransactCtx(a.ctx, func(ctx context.Context, session sqlx.Session) error {
-		err := a.removePolicyByPolicySlice(ctx, policys, session)
+		err := a.removePolicyByPolicySlice(ctx, &policys, session)
 		return err
 	})
 	return err
 }
 
-func (a *Adapter) removePolicyByPolicySlice(ctx context.Context, policySlice []CasbinPolicy, session sqlx.Session) error {
-	for _, policy := range policySlice {
-		err := a.deleteRow(ctx, policy, session)
+func (a *Adapter) removePolicyByPolicySlice(ctx context.Context, policySlice *[]CasbinPolicy, session sqlx.Session) error {
+	for _, policy := range *policySlice {
+		err := a.deleteRow(ctx, &policy, session)
 		if err != nil {
 			return err
 		}
@@ -322,13 +302,13 @@ func (a *Adapter) LoadFilteredPolicy(model model.Model, filter interface{}) erro
 	if !ok {
 		return errors.New("invalid filter type")
 	}
-	lines, err := a.FindByFilter(a.ctx, filterValue, a.db)
+	lines, err := a.findByFilter(a.ctx, filterValue, a.db)
 	if err != nil {
 		return err
 	}
 
-	for _, line := range lines {
-		err := a.loadPolicyLine(line, model)
+	for _, line := range *lines {
+		err = a.loadPolicyLine(line, model)
 		if err != nil {
 			log.Println(err)
 		}
@@ -354,40 +334,15 @@ func (a *Adapter) loadPolicyLine(line CasbinPolicy, model model.Model) error {
 	return err
 }
 
-func (a *Adapter) savePolicyLine(ptype string, rule []string) CasbinPolicy {
-	line := CasbinPolicy{}
-	line.Ptype = ptype
-	ruleLen := len(rule)
-	if ruleLen > 0 {
-		line.V0 = rule[0]
-	}
-	if ruleLen > 1 {
-		line.V1 = rule[1]
-	}
-	if ruleLen > 2 {
-		line.V2 = rule[2]
-	}
-	if ruleLen > 3 {
-		line.V3 = rule[3]
-	}
-	if ruleLen > 4 {
-		line.V4 = rule[4]
-	}
-	if ruleLen > 5 {
-		line.V5 = rule[5]
-	}
-	return line
-}
-
 // 批量新增
-func (a *Adapter) batchInsertPolicy(ctx context.Context, policys []CasbinPolicy, session sqlx.Session) error {
-	lens := len(policys)
+func (a *Adapter) batchInsertPolicy(ctx context.Context, policys *[]CasbinPolicy, session sqlx.Session) error {
+	lens := len(*policys)
 	if lens <= 0 {
 		return errors.New("batchInsertPolicy policys len is 0")
 	}
 	args := make([]interface{}, 0, lens*7)
 	sql := "INSERT INTO `%s` (%s) VALUES "
-	for i, line := range policys {
+	for i, line := range *policys {
 		sql += "(" + policyPlaceholder + ")"
 		if i+1 != lens {
 			sql += ","
@@ -402,13 +357,13 @@ func (a *Adapter) batchInsertPolicy(ctx context.Context, policys []CasbinPolicy,
 	return err
 }
 
-func (a *Adapter) insertPolicy(ctx context.Context, policy CasbinPolicy, session sqlx.Session) error {
-	query := fmt.Sprintf("insert into %s (%s) values (%s)", a.tableName, policyFields, policyPlaceholder)
+func (a *Adapter) insertPolicy(ctx context.Context, policy *CasbinPolicy, session sqlx.Session) error {
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", a.tableName, policyFields, policyPlaceholder)
 	_, err := a.db.ExecCtx(a.ctx, query, policy.Ptype, policy.V0, policy.V1, policy.V2, policy.V3, policy.V4, policy.V5)
 	return err
 }
 
-func (a *Adapter) updatePolicy(ctx context.Context, oldPolicy, policy CasbinPolicy, session sqlx.Session) error {
+func (a *Adapter) updatePolicy(ctx context.Context, oldPolicy, policy *CasbinPolicy, session sqlx.Session) error {
 	sql := "UPDATE %s SET %s = ?, %s = ?, %s = ?, %s = ?, %s = ?, %s = ?, %s = ? WHERE %s = ? AND %s = ? AND %s = ? AND %s = ? AND %s = ? AND %s = ? AND %s = ?"
 	sql = fmt.Sprintf(sql, a.tableName, TableField.Ptype, TableField.V0, TableField.V1, TableField.V2, TableField.V3, TableField.V4, TableField.V5,
 		TableField.Ptype, TableField.V0, TableField.V1, TableField.V2, TableField.V3, TableField.V4, TableField.V5)
@@ -416,7 +371,7 @@ func (a *Adapter) updatePolicy(ctx context.Context, oldPolicy, policy CasbinPoli
 	return err
 }
 
-func (a *Adapter) deleteRow(ctx context.Context, policy CasbinPolicy, session sqlx.Session) error {
+func (a *Adapter) deleteRow(ctx context.Context, policy *CasbinPolicy, session sqlx.Session) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE %s = ? AND %s = ? AND %s = ? AND %s = ? AND %s = ? AND %s = ? AND %s = ?",
 		a.tableName, TableField.Ptype, TableField.V0, TableField.V1, TableField.V2, TableField.V3, TableField.V4, TableField.V5)
 	_, err := session.ExecCtx(ctx, query, policy.Ptype, policy.V0, policy.V1, policy.V2, policy.V3, policy.V4, policy.V5)
@@ -429,7 +384,7 @@ func (a *Adapter) deleteAll(ctx context.Context, session sqlx.Session) error {
 }
 
 // GenCondBind 生成条件和bind
-func (a *Adapter) genCondBind(policy CasbinPolicy) (string, []interface{}) {
+func (a *Adapter) genCondBind(policy *CasbinPolicy) (string, []interface{}) {
 	cond := "%s = ?"
 	field := []interface{}{
 		TableField.Ptype,
@@ -470,17 +425,26 @@ func (a *Adapter) genCondBind(policy CasbinPolicy) (string, []interface{}) {
 	return fmt.Sprintf(cond, field...), bind
 }
 
-func (a *Adapter) FindByCond(ctx context.Context, cond string, bind []interface{}, session sqlx.Session) ([]CasbinPolicy, error) {
+func (a *Adapter) deleteByCond(ctx context.Context, cond string, bind []interface{}, session sqlx.Session) error {
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s", a.tableName, cond)
+	_, err := session.ExecCtx(ctx, query, bind...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *Adapter) findByCond(ctx context.Context, cond string, bind []interface{}, session sqlx.Session) (*[]CasbinPolicy, error) {
 	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s", policyFields, a.tableName, cond)
 	var policys []CasbinPolicy
 	err := session.QueryRowsPartialCtx(ctx, &policys, query, bind...)
 	if err != nil {
 		return nil, err
 	}
-	return policys, nil
+	return &policys, nil
 }
 
-func (a *Adapter) FindByFilter(ctx context.Context, filter *Filter, session sqlx.Session) ([]CasbinPolicy, error) {
+func (a *Adapter) findByFilter(ctx context.Context, filter *Filter, session sqlx.Session) (*[]CasbinPolicy, error) {
 	if filter == nil {
 		return nil, errors.New("FindByFilter filter is nil")
 	}
@@ -583,38 +547,69 @@ func (a *Adapter) FindByFilter(ctx context.Context, filter *Filter, session sqlx
 	if err != nil {
 		return nil, err
 	}
-	return policys, nil
+	return &policys, nil
 }
 
-func policyToStringSlice(policy CasbinPolicy) []string {
+func getFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) (*CasbinPolicy, error) {
+	if fieldIndex < 0 && fieldIndex > 5 {
+		return nil, errors.New("GetFilteredNamedPolicy fieldIndex must be a number from 0 to 5")
+	}
+	valLen := len(fieldValues)
+	if valLen == 0 {
+		return nil, errors.New("GetFilteredNamedPolicy fieldValues len is 0")
+	}
+	line := CasbinPolicy{}
+	line.Ptype = ptype
+	if fieldIndex <= 0 && 0 < fieldIndex+valLen {
+		line.V0 = fieldValues[0-fieldIndex]
+	}
+	if fieldIndex <= 1 && 1 < fieldIndex+valLen {
+		line.V1 = fieldValues[1-fieldIndex]
+	}
+	if fieldIndex <= 2 && 2 < fieldIndex+valLen {
+		line.V2 = fieldValues[2-fieldIndex]
+	}
+	if fieldIndex <= 3 && 3 < fieldIndex+valLen {
+		line.V3 = fieldValues[3-fieldIndex]
+	}
+	if fieldIndex <= 4 && 4 < fieldIndex+valLen {
+		line.V4 = fieldValues[4-fieldIndex]
+	}
+	if fieldIndex <= 5 && 5 < fieldIndex+valLen {
+		line.V5 = fieldValues[5-fieldIndex]
+	}
+	return &line, nil
+}
+
+func policyToStringSlice(policy *CasbinPolicy) []string {
 	rule := []string{policy.V0, policy.V1, policy.V2, policy.V3, policy.V4, policy.V5}
 	return rule
 }
 
-func policySliceToStringSlice(policys []CasbinPolicy) [][]string {
+func policySliceToStringSlice(policys *[]CasbinPolicy) [][]string {
 	var rules [][]string
-	lens := len(policys)
+	lens := len(*policys)
 	if lens > 0 {
 		rules = make([][]string, 0, lens)
-		for i, line := range policys {
-			rule := policyToStringSlice(line)
+		for i, line := range *policys {
+			rule := policyToStringSlice(&line)
 			rules[i] = rule
 		}
 	}
 	return rules
 }
 
-func stringSliceToPolicySlice(ptype string, rules [][]string) []CasbinPolicy {
+func stringSliceToPolicySlice(ptype string, rules [][]string) *[]CasbinPolicy {
 	lens := len(rules)
 	policys := make([]CasbinPolicy, 0, lens)
 	for _, rule := range rules {
 		line := savePolicyLine(ptype, rule)
-		policys = append(policys, line)
+		policys = append(policys, *line)
 	}
-	return policys
+	return &policys
 }
 
-func savePolicyLine(ptype string, rule []string) CasbinPolicy {
+func savePolicyLine(ptype string, rule []string) *CasbinPolicy {
 	line := CasbinPolicy{}
 	line.Ptype = ptype
 	ruleLen := len(rule)
@@ -636,5 +631,5 @@ func savePolicyLine(ptype string, rule []string) CasbinPolicy {
 	if ruleLen > 5 {
 		line.V5 = rule[5]
 	}
-	return line
+	return &line
 }
