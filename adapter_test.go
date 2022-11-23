@@ -16,6 +16,25 @@ var (
 )
 
 func TestPolicy(t *testing.T) {
+
+	//err := csb.LoadFilteredPolicy(&Filter{
+	//	Ptype: []string{
+	//		"p",
+	//	},
+	//	V0: []string{
+	//		"YCJ", "YCJ1",
+	//	},
+	//	V2: []string{
+	//		"GET", "POST",
+	//	},
+	//})
+	//if err != nil {
+	//	t.Error(err)
+	//}
+	//
+	//policy := csb.GetPolicy()
+	//fmt.Println(policy)
+
 	err := csb.LoadPolicy()
 	if err != nil {
 		t.Error(err)
@@ -44,9 +63,9 @@ func TestPolicy(t *testing.T) {
 
 	hasNamedPolicy := csb.HasNamedPolicy("p", "YCJ", "/def", "POST", "allow")
 	fmt.Println("hasNamedPolicy:", hasNamedPolicy)
-	//
-	//namedPolicy := csb.GetFilteredNamedPolicy("p", 0, "YCJ")
-	//fmt.Println("GetFilteredNamedPolicy:", namedPolicy)
+
+	namedPolicy := csb.GetFilteredNamedPolicy("p", 0, "YCJ")
+	fmt.Println("GetFilteredNamedPolicy:", namedPolicy)
 	//
 	//filteredRemove, err := csb.RemoveFilteredNamedPolicy("p", 0, "YCJ")
 	//if err != nil {

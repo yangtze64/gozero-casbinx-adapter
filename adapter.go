@@ -458,86 +458,93 @@ func (a *Adapter) findByFilter(ctx context.Context, filter *Filter, session sqlx
 	if PtypeLen == 0 && v0Len == 0 && v1Len == 0 && v2Len == 0 && v3Len == 0 && v4Len == 0 && v5Len == 0 {
 		return nil, errors.New("FindByFilter filter element all len is 0")
 	}
-	fields := make([]interface{}, 0, 10)
+	fields := make([]interface{}, 0, 2)
 	values := make([]interface{}, 0, 1)
 	sql := "SELECT %s FROM %s WHERE"
 	fields = append(fields, policyFields, a.tableName)
 	if PtypeLen > 0 {
 		if !strings.HasSuffix(sql, "WHERE") {
-			sql += " AND "
+			sql += " AND"
 		}
-		sql += "%s IN(%s)"
+		sql += " %s IN("
 		fields = append(fields, TableField.Ptype)
 		for _, s := range filter.Ptype {
-			fields = append(fields, "?")
+			sql += "?,"
 			values = append(values, s)
 		}
+		sql = strings.TrimRight(sql, ",") + ")"
 	}
 	if v0Len > 0 {
 		if !strings.HasSuffix(sql, "WHERE") {
-			sql += " AND "
+			sql += " AND"
 		}
-		sql += "%s IN(%s)"
+		sql += " %s IN("
 		fields = append(fields, TableField.V0)
 		for _, s := range filter.V0 {
-			fields = append(fields, "?")
+			sql += "?,"
 			values = append(values, s)
 		}
+		sql = strings.TrimRight(sql, ",") + ")"
 	}
 	if v1Len > 0 {
 		if !strings.HasSuffix(sql, "WHERE") {
-			sql += " AND "
+			sql += " AND"
 		}
-		sql += "%s IN(%s)"
+		sql += " %s IN("
 		fields = append(fields, TableField.V1)
 		for _, s := range filter.V1 {
-			fields = append(fields, "?")
+			sql += "?,"
 			values = append(values, s)
 		}
+		sql = strings.TrimRight(sql, ",") + ")"
 	}
 	if v2Len > 0 {
 		if !strings.HasSuffix(sql, "WHERE") {
-			sql += " AND "
+			sql += " AND"
 		}
-		sql += "%s IN(%s)"
+		sql += " %s IN("
 		fields = append(fields, TableField.V2)
 		for _, s := range filter.V2 {
-			fields = append(fields, "?")
+			sql += "?,"
 			values = append(values, s)
 		}
+		sql = strings.TrimRight(sql, ",") + ")"
 	}
 	if v3Len > 0 {
 		if !strings.HasSuffix(sql, "WHERE") {
-			sql += " AND "
+			sql += " AND"
 		}
-		sql += "%s IN(%s)"
+		sql += " %s IN("
 		fields = append(fields, TableField.V3)
 		for _, s := range filter.V3 {
-			fields = append(fields, "?")
+			sql += "?,"
 			values = append(values, s)
 		}
+		sql = strings.TrimRight(sql, ",") + ")"
 	}
 	if v4Len > 0 {
 		if !strings.HasSuffix(sql, "WHERE") {
-			sql += " AND "
+			sql += " AND"
 		}
-		sql += "%s IN(%s)"
+		sql += " %s IN("
 		fields = append(fields, TableField.V4)
 		for _, s := range filter.V4 {
-			fields = append(fields, "?")
+			sql += "?,"
 			values = append(values, s)
 		}
+		sql = strings.TrimRight(sql, ",") + ")"
 	}
 	if v5Len > 0 {
 		if !strings.HasSuffix(sql, "WHERE") {
-			sql += " AND "
+			sql += " AND"
 		}
-		sql += "%s IN(%s)"
+		sql += " %s IN("
 		fields = append(fields, TableField.V5)
 		for _, s := range filter.V5 {
-			fields = append(fields, "?")
+			sql += "?,"
 			values = append(values, s)
 		}
+		sql = strings.TrimRight(sql, ",") + ")"
 	}
 	sql = fmt.Sprintf(sql, fields...)
 	fmt.Println("sql:", sql)
