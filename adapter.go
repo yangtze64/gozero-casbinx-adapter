@@ -598,9 +598,9 @@ func policySliceToStringSlice(policys *[]CasbinPolicy) [][]string {
 	lens := len(*policys)
 	if lens > 0 {
 		rules = make([][]string, 0, lens)
-		for i, line := range *policys {
+		for _, line := range *policys {
 			rule := policyToStringSlice(&line)
-			rules[i] = rule
+			rules = append(rules, rule)
 		}
 	}
 	return rules
